@@ -113,20 +113,19 @@ def retrieve_mcnot(n):
         mcx = pickle.load(f)
     return mcx
 
-def build_grover(problem, uncertainty_model) :
-    A = problem.state_preparation
+def build_grover(state_preparation, oracle, uncertainty_model) :
+    A = state_preparation
     # print('qiskit state prep:',A.decompose(reps=99).depth())
-    oracle = problem.grover_operator.oracle
-    # print('qiskit grover op:',problem.grover_operator.decompose(reps=99).depth())
+    # print('qiskit grover op:',oracle.decompose(reps=99).depth())
 
-    mcx = retrieve_mcnot(problem.state_preparation.num_qubits-1)
+    mcx = retrieve_mcnot(A.num_qubits-1)
 
-    S_0 = QuantumCircuit(problem.state_preparation.num_qubits + 1)
-    S_0.x([i for i in range(problem.state_preparation.num_qubits)])
+    S_0 = QuantumCircuit(A.num_qubits + 1)
+    S_0.x([i for i in range(A.num_qubits)])
     S_0.h(uncertainty_model.num_qubits)
     S_0.append(mcx, S_0.qubits[:-2]+[S_0.qubits[-1], S_0.qubits[-2]])
     S_0.h(uncertainty_model.num_qubits)
-    S_0.x([i for i in range(problem.state_preparation.num_qubits)])
+    S_0.x([i for i in range(A.num_qubits)])
 
     custom_Grover = QuantumCircuit(S_0.num_qubits)
     custom_Grover.append(oracle, custom_Grover.qubits[:oracle.num_qubits])
