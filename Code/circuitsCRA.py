@@ -116,7 +116,7 @@ def post_processingV2(x, lgd, c=0) :
 
 
 
-def get_expected_probability_circuit(K: int, uncertainity_model: QuantumCircuit, lgd: list, target_loss: float, phases=None, poly:list=None, threshold=0.5, enable_switch=True, epsilon=0.6) -> (QuantumCircuit, QuantumCircuit):
+def get_expected_probability_circuit(K: int, uncertainity_model: QuantumCircuit, lgd: list, target_loss: float, phases=None, poly:list=None, threshold=0.5, enable_switch=True, epsilon=0.6, verbose=False) -> (QuantumCircuit, QuantumCircuit):
     """
     
     """
@@ -177,14 +177,15 @@ def get_expected_probability_circuit(K: int, uncertainity_model: QuantumCircuit,
     transform_losses_to_angles = lambda loss: unitary_gap*(loss/maximum - target_loss_scaled) + arc_threshold
     scaled_offsets = [transform_losses_to_angles(off) - transform_losses_to_angles(0) for off in offsets] # shifto tutto per fare in modo che lo 0 sia in 0, così che la trasformazione sia additiva
     
-    print(f' unitary gap {unitary_gap} ---------------------')
-    print(f' switched {switched} ---------------------')
-    print(f' minimum_angle {minimum_angle} ---------------------')
-    print(f' minimum_range {minimum_range} ---------------------')
-    print(f' maximum_range {maximum_range} ---------------------')
-    print(f' arc_threshold {arc_threshold} ---------------------')
-    print(f' scaled offset {scaled_offsets} ---------------------')
-    print(f' shift {transform_losses_to_angles(0)} ---------------------')
+    if verbose:
+        print(f' unitary gap {unitary_gap} ---------------------')
+        print(f' switched {switched} ---------------------')
+        print(f' minimum_angle {minimum_angle} ---------------------')
+        print(f' minimum_range {minimum_range} ---------------------')
+        print(f' maximum_range {maximum_range} ---------------------')
+        print(f' arc_threshold {arc_threshold} ---------------------')
+        print(f' scaled offset {scaled_offsets} ---------------------')
+        print(f' shift {transform_losses_to_angles(0)} ---------------------')
 
     
     objective_e_loss = AmplitudeLoadingVar(K, scaled_offsets, starting_offset = transform_losses_to_angles(0))

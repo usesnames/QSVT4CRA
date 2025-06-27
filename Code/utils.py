@@ -107,31 +107,3 @@ def bisection_search(objective, target_value, low_level, high_level, low_value=0
     print('-----------------------------------------------------------------------')
     return {'level': high_level, 'value': high_value, 'num_eval': num_eval, 'comment': 'success'}
 
-
-def retrieve_mcnot(n):
-    with open(f'mcx_gates/custom_mcx_{n}.pkl', 'rb') as f:
-        mcx = pickle.load(f)
-    return mcx
-
-def build_grover(state_preparation, oracle, uncertainty_model) :
-    A = state_preparation
-    # print('qiskit state prep:',A.decompose(reps=99).depth())
-    # print('qiskit grover op:',oracle.decompose(reps=99).depth())
-
-    mcx = retrieve_mcnot(A.num_qubits-1)
-
-    S_0 = QuantumCircuit(A.num_qubits + 1)
-    S_0.x([i for i in range(A.num_qubits)])
-    S_0.h(uncertainty_model.num_qubits)
-    S_0.append(mcx, S_0.qubits[:-2]+[S_0.qubits[-1], S_0.qubits[-2]])
-    S_0.h(uncertainty_model.num_qubits)
-    S_0.x([i for i in range(A.num_qubits)])
-
-    custom_Grover = QuantumCircuit(S_0.num_qubits)
-    custom_Grover.append(oracle, custom_Grover.qubits[:oracle.num_qubits])
-    custom_Grover.append(A.inverse(), custom_Grover.qubits[:A.num_qubits])
-    custom_Grover.append(S_0, custom_Grover.qubits[:S_0.num_qubits])
-    custom_Grover.append(A, custom_Grover.qubits[:A.num_qubits])
-
-    # print('custom grover op:',custom_Grover.decompose(reps=99).depth())
-    return custom_Grover
