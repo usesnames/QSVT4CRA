@@ -7,7 +7,7 @@ import numpy as np
 # Import custom module(s)
 from Code.utils import mapping
 from Code.AmplitudeLoading import AmplitudeLoading, AmplitudeLoadingV2, AmplitudeLoadingVar
-from Code.QSP import QSP
+from Code.QSVT import QSVT
 
 # =============================================================================
 # Create the Expected Loss circuit
@@ -116,70 +116,90 @@ def post_processingV2(x, lgd, c=0) :
 
 
 
-def get_expected_probability_circuit(K: int, uncertainity_model: QuantumCircuit, lgd: list, target_loss: float, phases=None, poly:list=None, threshold=0.5, enable_switch=True, epsilon=0.6, verbose=False) -> (QuantumCircuit, QuantumCircuit):
+def get_expected_probability_circuit(
+    K: int,
+    uncertainity_model: QuantumCircuit,
+    lgd: list,
+    target_loss: float,
+    phases=None,
+    poly:list=None,
+    threshold=0.5,
+    enable_switch=True, epsilon=0.6,
+    verbose=False
+) -> (QuantumCircuit, QuantumCircuit):
     """
+    This function prepares a circuit such that the probability of obtaining 1
+        measuring an additional qubit (the last one) equals the probability for
+        of having a total loss that is at most target_loss.
+    To do that, it applies QSVT with a polynomial that approximates the even
+        threshold function (or rectangular function) to a circuit that
+        cleaverly encodes all possible scenarios.
+
+    Args:
+        K: The integer number of counterparties.
+        uncertainity_model: The quantum circuit modelling the uncertainty model
+            of counterparties' default.
+        lgd: The list of losses given default of each counterparty
+        target_loss: The value for which we want compute the probability such 
+            that the total loss is less.
+        phases: The list of phases to be used in QSP to apply the even
+            threshold function.
+        poly: The list of coefficients defining the even threshold function. It
+            is used only id phases is null. 
+            **Caution**: transformation from polynomial coefficients to phases
+            uses the library pyqsp, but only old versions with low degree
+            polynomials approximations work.
+        threshold: the threshold value of the even threshold function we are
+            interested in.
+        enable_witch: deprecated.
+        epsilon: deprecated
+        verbose: if True, some additional information is printed.
+
+    Returns:
+        a 2-tuple of circuits. The first one is the entire circuit, whereas the
+            second one is the sub-circuit to which QSVT is applied, that is the
+            circuit mapping each scenario of default to its total loss.
     
     """
-    # print('get_expected_probability_circuit')
     offsets = lgd
 
-    # l'obbiettivo è avere uno stato in cui abbiamo i valori maggiori di target_loss in un emisfero della sfera di bloch
-    # e quelli minori in un altro, tenendo la massima distanziazione possibile tra i vari valori
-    # fisso quindi target_loss_scaled a t=+arcsin(threshold) e cerco di fare stare lo 0 di perdita in [-t, t) e il massimo di perdita
-    # tra t e pi-t. Tutto questo con un certo margine di errore, per cui mi prendo un epsilon di margine dagli estremi -t e pi-t
+    # First step: 
+    # Our aim is having a state such that values corresponding to losses
+    # **above** _target_loss_ are mapped to points of Bloch sphere whose
+    # amplitude on the target qubit is greater than _threshold_.
+    # This is achieved by mapping losses to angles such that values
+    # **above** _target_loss_ correspond to angles whose sin is greater
+    # then _threshold_.
+
+    # To do so, we fix 0 as the minimum angle and pi/2 as the maximum and we
+    # linearly spread values between these boundaries so that the _target_loss_
+    # is mapped to _threshold_
+
     maximum = sum(offsets)
     target_loss_scaled = target_loss/maximum
     minimum = target_loss_scaled
     arc_threshold = np.arcsin(threshold)
-    maximum_angle = np.pi/2 # np.pi - arc_threshold - epsilon # deve essere < pi - arc_threshold
-    minimum_angle = 0 # -arc_threshold + epsilon # deve essere > -arc_threshold
+    maximum_angle = np.pi/2
+    minimum_angle = 0
     maximum_range = None
     minimum_range = None
    
-    if True or (enable_switch and ( # accetto di avere come risultato la probabilità di avere *al massimo* la target loss
-        (
-            target_loss_scaled > 1/2 and # i valori *sotto* la target loss occupano *più* spazio di quelli sopra la target loss e
-            (arc_threshold - minimum_angle) > (maximum_angle - arc_threshold) # l'angolo sotto la threshold è maggiore dell'angolo sopra la threshold
-        ) # allora in questo caso mi conviene mettere i valori *sotto* la target loss *sotto* l'arc_thresh (perché occupano più spazio e ho più spazio sotto l'arc_threshold)
-        or # o
-        (
-            target_loss_scaled < 1/2 and  # i valori *sotto* la target loss occupano *meno* spazio di quelli sopra e
-            (arc_threshold - minimum_angle)<(maximum_angle - arc_threshold) # l'anglo sotto la threshold è minore dell'angolo sopra la threshold
-        ) 
-    )): # allora in questo caso mi conviene mettere i valori *sotto* la target loss *sotto* l'arc_thresh (perché occupano *meno* spazio e ho *meno* spazio sotto l'arc_threshold)
-        # e quindi calcolerò la probabilità di avere *al massimo* la target loss
-        switched = True # mi segno che sto calcolando il contrario: la probabilità di avere *al massimo* la target loss
-        if target_loss_scaled > (arc_threshold - minimum_angle)/(maximum_angle - minimum_angle): # 
-            # in questo caso ho più spazio per i valori esclusi dalla threshold function che prendono
-            # un arco maggiore, quindi gli faccio occupare tutto lo spazio disponibile e regolo
-            # quelli presi dalla threshold di conseguenza
-            minimum_range = minimum_angle
-            unitary_gap = (arc_threshold - minimum_range) / target_loss_scaled
-        else:
-            maximum_range = maximum_angle
-            unitary_gap = (maximum_range - arc_threshold) / (1-target_loss_scaled)
+    if target_loss_scaled > (arc_threshold - minimum_angle)/(maximum_angle - minimum_angle): # 
+        # in questo caso ho più spazio per i valori esclusi dalla threshold function che prendono
+        # un arco maggiore, quindi gli faccio occupare tutto lo spazio disponibile e regolo
+        # quelli presi dalla threshold di conseguenza
+        minimum_range = minimum_angle
+        unitary_gap = (arc_threshold - minimum_range) / target_loss_scaled
     else:
-        # in questo caso metto le perdite sopra la soglia in [minimum_angle, arc_threshold] e i valori
-        # sotto la soglia in [arc_threshold, maximum_angle].
-        # in questo modo alla fine avrò la probabilità di ottenere al massimo target_loss_scaled
-        switched = False
-        if target_loss_scaled > (maximum_angle - arc_threshold)/(maximum_angle - minimum_angle):
-            # in questo caso ho più spazio per i valori esclusi dalla threshold function prendono
-            # un arco maggiore, quindi gli faccio occupare tutto lo spazio disponibile e regolo
-            # quelli presi dalla threshold di conseguenza
-            minimum_range = maximum_angle
-            unitary_gap = (arc_threshold - minimum_range) / target_loss_scaled
-        else:
-            # viceversa, occupo tutto lo spazio disponibile con i valori presi dalla threshold function
-            maximum_range = minimum_angle
-            unitary_gap = (maximum_range - arc_threshold) / (1 - target_loss_scaled)
+        maximum_range = maximum_angle
+        unitary_gap = (maximum_range - arc_threshold) / (1-target_loss_scaled)
+    
 
     transform_losses_to_angles = lambda loss: unitary_gap*(loss/maximum - target_loss_scaled) + arc_threshold
     scaled_offsets = [transform_losses_to_angles(off) - transform_losses_to_angles(0) for off in offsets] # shifto tutto per fare in modo che lo 0 sia in 0, così che la trasformazione sia additiva
     
     if verbose:
         print(f' unitary gap {unitary_gap} ---------------------')
-        print(f' switched {switched} ---------------------')
         print(f' minimum_angle {minimum_angle} ---------------------')
         print(f' minimum_range {minimum_range} ---------------------')
         print(f' maximum_range {maximum_range} ---------------------')
@@ -190,17 +210,15 @@ def get_expected_probability_circuit(K: int, uncertainity_model: QuantumCircuit,
     
     objective_e_loss = AmplitudeLoadingVar(K, scaled_offsets, starting_offset = transform_losses_to_angles(0))
     
-    qsp = qsp_application_circuit(objective_e_loss, poly=poly, phases=phases)
+    qsvt = qsvt_application_circuit(objective_e_loss, poly=poly, phases=phases)
     state_preparation = QuantumCircuit(
         QuantumRegister(uncertainity_model.num_qubits - K, 'z'),
-        *qsp.qregs,
+        *qsvt.qregs,
         name="state_preparation"
     )
     state_preparation.append(uncertainity_model, state_preparation.qubits[0:len(state_preparation.qubits)-2])
-    state_preparation.append(qsp, qsp.qubits[:])
-    if enable_switch:
-        return state_preparation, objective_e_loss, switched
-    return state_preparation, objective_e_loss
+    state_preparation.append(qsvt, qsvt.qubits[:])
+    return state_preparation, objective_e_loss, True
 
 
 def build_state_preparation_circuit(uncertainity_model, objective_e_loss, K) -> QuantumCircuit:
@@ -222,8 +240,8 @@ def build_state_preparation_circuit(uncertainity_model, objective_e_loss, K) -> 
     return state_preparation
 
 
-def qsp_application_circuit(p_sp: QuantumCircuit, phases=None, poly:list=None, factor=1): ### da finre
-    return QSP(
+def qsvt_application_circuit(p_sp: QuantumCircuit, phases=None, poly:list=None, factor=1): ### da finre
+    return QSVT(
         p_sp, 
         [p_sp.num_qubits - 1], [p_sp.num_qubits - 1], # |0\rangle\langle 0|
         poly=poly,
@@ -232,7 +250,7 @@ def qsp_application_circuit(p_sp: QuantumCircuit, phases=None, poly:list=None, f
         ctrl_zero_qubits1=[0],
         ctrl_zero_qubits2=[0]
     )#######################
-    circuit = QuantumCircuit(p_sp.qregs[0], p_sp.qregs[1], name='QSP_'+str(factor))
+    circuit = QuantumCircuit(p_sp.qregs[0], p_sp.qregs[1], name='QSVT_'+str(factor))
     q_target = p_sp.qregs[1]
     sp_gate = p_sp.to_gate()
     sp_gate_inverse = sp_gate.inverse()
