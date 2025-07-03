@@ -6,7 +6,7 @@ import numpy as np
 from pyqsp.angle_sequence import QuantumSignalProcessingPhases
 
 
-class QSP(QuantumCircuit):
+class QSVT(QuantumCircuit):
     do_print_phases=False
     def __init__(
         self, unitary_circuit:QuantumCircuit, 
@@ -14,17 +14,17 @@ class QSP(QuantumCircuit):
         phases:list=None, poly:list=None, adjust_conventions:bool=False,
         ctrl_zero_qubits1:list=[],
         ctrl_zero_qubits2:list=[],
-        name:str='QSP'
+        name:str='QSVT'
     ):
         '''
         Given 
         Args:
-            unitary_circuit: QuantumCircuit on which QSP is going to be applied. This is the global circuit (usually denoted as U in litterature)
-            phases: list of phases to be applied in QSP
-            poly: list of coefficients of a polynomial that we want to apply using QSP.
+            unitary_circuit: QuantumCircuit on which QSVT is going to be applied. This is the global circuit (usually denoted as U in litterature)
+            phases: list of phases to be applied in QSVT
+            poly: list of coefficients of a polynomial that we want to apply using QSVT.
                 Used only when phases is None to compute them using the library pyqsp
             adjust_conventions:bool when True, phases are converted. Default False
-            name: name of the resulting circuit. Default 'QSP'
+            name: name of the resulting circuit. Default 'QSVT'
         '''
         if phases is None and poly is not None:
             phases = QuantumSignalProcessingPhases(
@@ -33,7 +33,7 @@ class QSP(QuantumCircuit):
         if self.do_print_phases:
             print(phases)
         if adjust_conventions:
-            phases = QSP.adjust_qsvt_convetions(phases)
+            phases = QSVT.adjust_qsvt_convetions(phases)
         if self.do_print_phases:
             print(phases)
         self.unitary_gate = unitary_circuit.to_gate()
@@ -51,7 +51,7 @@ class QSP(QuantumCircuit):
         self.qu_registers.append(self.aux_reg)
         super().__init__(*self.qu_registers, name=name)
         self.h(self.aux_reg)
-        self.createQsp()
+        self.createQSVT()
         self.h(self.aux_reg)
         
     def addProj(self, id_proj:int, phi:float):
@@ -69,7 +69,7 @@ class QSP(QuantumCircuit):
         for i in ctrl_zero_qubits:
             self.x(subspace_qubits[i])
         
-    def createQsp(self):
+    def createQSVT(self):
         parity=True
         u_inv = self.unitary_gate.inverse()
         U=self.unitary_gate
